@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Currency Converter",
+  "version": "1.0",
+  "description": "Automatically detects and converts currencies on webpages.",
+  "permissions": ["storage", "activeTab", "tabs"],
+  "host_permissions": [
+    "https://cdn.jsdelivr.net/*",
+    "https://latest.currency-api.pages.dev/*",
+    "https://api.coingecko.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}

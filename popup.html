@@ -1,0 +1,482 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Currency Converter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        width: 280px;
+        background: #f0f2f5;
+        color: #333;
+        padding: 12px;
+      }
+
+      .section {
+        background: #fff;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      }
+
+      h3 {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #999;
+        margin-bottom: 8px;
+      }
+
+      /* ---------- Search Box ---------- */
+      .search-wrap {
+        position: relative;
+        margin-bottom: 6px;
+      }
+
+      .search-wrap input {
+        width: 100%;
+        padding: 6px 8px 6px 28px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 12px;
+        outline: none;
+        background: #fafafa;
+      }
+
+      .search-wrap input:focus {
+        border-color: #4a90e2;
+        background: #fff;
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 12px;
+        color: #aaa;
+        pointer-events: none;
+      }
+
+      /* ---------- Custom Dropdown ---------- */
+      .dropdown-wrap {
+        position: relative;
+      }
+
+      .dropdown-selected {
+        width: 100%;
+        padding: 7px 28px 7px 8px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 13px;
+        background: #fafafa;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        user-select: none;
+        transition: border 0.2s;
+      }
+
+      .dropdown-selected:hover {
+        border-color: #4a90e2;
+      }
+
+      .dropdown-arrow {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 10px;
+        color: #aaa;
+        pointer-events: none;
+      }
+
+      .dropdown-list {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        z-index: 9999;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .dropdown-list.open {
+        display: block;
+      }
+
+      .dropdown-search {
+        padding: 8px;
+        border-bottom: 1px solid #f0f0f0;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
+      }
+
+      .dropdown-search input {
+        width: 100%;
+        padding: 5px 8px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 12px;
+        outline: none;
+      }
+
+      .dropdown-search input:focus {
+        border-color: #4a90e2;
+      }
+
+      .dropdown-group-label {
+        padding: 4px 10px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #aaa;
+        background: #f9f9f9;
+      }
+
+      .dropdown-item {
+        padding: 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.1s;
+      }
+
+      .dropdown-item:hover,
+      .dropdown-item.active {
+        background: #f0f6ff;
+        color: #4a90e2;
+      }
+
+      .dropdown-item .flag {
+        font-size: 16px;
+      }
+      .dropdown-item .code {
+        font-weight: 600;
+      }
+      .dropdown-item .name {
+        font-size: 11px;
+        color: #999;
+      }
+
+      /* ---------- Converter Row ---------- */
+      .converter-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 6px;
+      }
+
+      .converter-row .dropdown-wrap {
+        flex: 1;
+      }
+
+      .arrow {
+        font-size: 14px;
+        color: #ccc;
+        flex-shrink: 0;
+      }
+
+      /* ---------- Amount Input ---------- */
+      .amount-input {
+        width: 100%;
+        padding: 7px 8px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 13px;
+        background: #fafafa;
+        outline: none;
+        transition: border 0.2s;
+        margin-bottom: 2px;
+      }
+
+      .amount-input:focus {
+        border-color: #4a90e2;
+        background: #fff;
+      }
+
+      /* ---------- Buttons ---------- */
+      button {
+        width: 100%;
+        margin-top: 8px;
+        padding: 8px;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background 0.2s,
+          opacity 0.2s;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      #save {
+        background: #4a90e2;
+        color: #fff;
+      }
+      #save:hover:not(:disabled) {
+        background: #357abd;
+      }
+
+      #convert {
+        background: #27ae60;
+        color: #fff;
+      }
+      #convert:hover:not(:disabled) {
+        background: #1e8449;
+      }
+
+      #cryptoConvert {
+        background: #f7931a;
+        color: #fff;
+      }
+      #cryptoConvert:hover:not(:disabled) {
+        background: #d4780f;
+      }
+
+      /* ---------- Result ---------- */
+      .result {
+        margin-top: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #27ae60;
+        min-height: 18px;
+        text-align: center;
+        word-break: break-word;
+      }
+
+      .result.error {
+        color: #e74c3c;
+      }
+      .result.loading {
+        color: #aaa;
+        font-weight: 400;
+      }
+
+      #cryptoResult {
+        color: #f7931a;
+      }
+      #cryptoResult.error {
+        color: #e74c3c;
+      }
+
+      /* ---------- Toggle ---------- */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #555;
+      }
+
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #ccc;
+        border-radius: 20px;
+        transition: background 0.2s;
+      }
+
+      .slider:before {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.2s;
+      }
+
+      input:checked + .slider {
+        background: #4a90e2;
+      }
+      input:checked + .slider:before {
+        transform: translateX(16px);
+      }
+
+      /* ---------- Footer ---------- */
+      .footer {
+        text-align: center;
+        font-size: 10px;
+        color: #ccc;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Page Currency -->
+    <div class="section">
+      <h3>&#127758; Page Currency</h3>
+      <div class="dropdown-wrap" id="currencyWrap">
+        <div class="dropdown-selected" id="currencySelected">
+          <span>Select currency</span>
+        </div>
+        <span class="dropdown-arrow">&#9660;</span>
+        <div class="dropdown-list" id="currencyList">
+          <div class="dropdown-search">
+            <input
+              type="text"
+              id="currencySearch"
+              placeholder="&#128269; Search currency..."
+            />
+          </div>
+          <div id="currencyOptions"></div>
+        </div>
+      </div>
+      <button id="save">Apply</button>
+    </div>
+
+    <!-- Mini Converter -->
+    <div class="section">
+      <h3>&#128257; Mini Converter</h3>
+      <input
+        class="amount-input"
+        id="amount"
+        type="number"
+        placeholder="Enter amount"
+        min="0"
+      />
+      <div class="converter-row">
+        <div class="dropdown-wrap" id="fromWrap">
+          <div class="dropdown-selected" id="fromSelected">
+            <span>USD</span>
+          </div>
+          <span class="dropdown-arrow">&#9660;</span>
+          <div class="dropdown-list" id="fromList">
+            <div class="dropdown-search">
+              <input
+                type="text"
+                id="fromSearch"
+                placeholder="&#128269; Search..."
+              />
+            </div>
+            <div id="fromOptions"></div>
+          </div>
+        </div>
+        <span class="arrow">&#8594;</span>
+        <div class="dropdown-wrap" id="toWrap">
+          <div class="dropdown-selected" id="toSelected"><span>INR</span></div>
+          <span class="dropdown-arrow">&#9660;</span>
+          <div class="dropdown-list" id="toList">
+            <div class="dropdown-search">
+              <input
+                type="text"
+                id="toSearch"
+                placeholder="&#128269; Search..."
+              />
+            </div>
+            <div id="toOptions"></div>
+          </div>
+        </div>
+      </div>
+      <button id="convert">Convert</button>
+      <div class="result" id="result"></div>
+    </div>
+
+    <!-- Crypto Converter -->
+    <div class="section">
+      <h3>&#9889; Crypto Converter</h3>
+      <input
+        class="amount-input"
+        id="cryptoAmount"
+        type="number"
+        placeholder="Enter amount"
+        min="0"
+      />
+      <div class="converter-row">
+        <div class="dropdown-wrap" id="cryptoFromWrap">
+          <div class="dropdown-selected" id="cryptoFromSelected">
+            <span>&#8383; BTC</span>
+          </div>
+          <span class="dropdown-arrow">&#9660;</span>
+          <div class="dropdown-list" id="cryptoFromList">
+            <div class="dropdown-search">
+              <input
+                type="text"
+                id="cryptoFromSearch"
+                placeholder="&#128269; Search..."
+              />
+            </div>
+            <div id="cryptoFromOptions"></div>
+          </div>
+        </div>
+        <span class="arrow">&#8594;</span>
+        <div class="dropdown-wrap" id="cryptoToWrap">
+          <div class="dropdown-selected" id="cryptoToSelected">
+            <span>&#127482;&#127480; USD</span>
+          </div>
+          <span class="dropdown-arrow">&#9660;</span>
+          <div class="dropdown-list" id="cryptoToList">
+            <div class="dropdown-search">
+              <input
+                type="text"
+                id="cryptoToSearch"
+                placeholder="&#128269; Search..."
+              />
+            </div>
+            <div id="cryptoToOptions"></div>
+          </div>
+        </div>
+      </div>
+      <button id="cryptoConvert">Convert</button>
+      <div class="result" id="cryptoResult"></div>
+    </div>
+
+    <!-- Site Toggle -->
+    <div class="section">
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="toggleSite" checked />
+          <span class="slider"></span>
+        </label>
+        <span>Enable on this site</span>
+      </div>
+    </div>
+
+    <div class="footer">Universal Currency Converter</div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
