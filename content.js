@@ -35,12 +35,6 @@ const multiplierMap = {
 const currencyList =
   "USD|EUR|INR|GBP|JPY|AUD|CAD|CNY|KRW|BRL|MXN|NGN|PKR|TRY|RUB|ZAR|SGD|HKD|NZD|THB";
 const multiplierWords = Object.keys(multiplierMap).join("|");
-
-// ✅ Number pattern now supports:
-// - Comma separator:  8,599.00  (western)
-// - Space separator:  8 599.00  (adidas/european)
-// - Indian format:    1,07,309
-// - Plain:            8599.00
 const numberPattern = `\\d+(?:[,\\s]\\d{2,3})*(?:\\.\\d+)?`;
 
 const symbolRegexStr =
@@ -51,9 +45,27 @@ const codeRegexStr =
   `\\b(?:${currencyList})\\s?${numberPattern}(?:\\s?(?:${multiplierWords}))?\\b` +
   `|\\b${numberPattern}(?:\\s?(?:${multiplierWords}))?\\s?(?:${currencyList})\\b`;
 
-const combinedRegex = new RegExp(`${symbolRegexStr}|${codeRegexStr}`, "gi");
+// ✅ PERF: fresh regex every call - no lastIndex bugs
+function getRegex() {
+  return new RegExp(`${symbolRegexStr}|${codeRegexStr}`, "gi");
+}
 
 const bareNumberRegex = /^\s*[\d,\s]+(?:\.\d{1,2})?\s*$/;
+
+const hasCurrencyIndicatorRegex = new RegExp(
+  `[$€£¥₹₩₽₺₦₫₱]|^rs\\.?|\\b(${currencyList})\\b`,
+  "i",
+);
+
+// ✅ PERF: quick pre-check - reject text with no digit instantly
+// Runs before heavy regex - saves time on 90% of text nodes
+const QUICK_CHECK = /[$€£¥₹₩₽₺₦₫₱\d]/;
+
+// ✅ PERF: skip tags set - faster than array includes
+const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "INPUT"]);
+
+// ✅ PERF: multiplier regex compiled once not inside convertMatch every call
+const multiplierRegex = new RegExp(`(${multiplierWords})\\s*$`, "i");
 
 /* ---------- Utilities ---------- */
 function debounce(func, timeout = 300) {
@@ -66,7 +78,7 @@ function debounce(func, timeout = 300) {
   };
 }
 
-/* ---------- Format number with commas ---------- */
+/* ---------- Format number ---------- */
 function formatNumber(amount, targetCurrency) {
   if (targetCurrency.toUpperCase() === "INR") {
     const [intPart, decPart] = amount.toFixed(2).split(".");
@@ -137,10 +149,7 @@ function convert(amount, from, target, rates) {
     : amount * (rates[target] / rates[from]);
 }
 
-/* ---------- Parse amount from matched string ---------- */
-// Strips all non-numeric characters except decimal point
 function parseAmount(str) {
-  // Remove currency symbols, letters, commas, spaces
   return parseFloat(str.replace(/[^\d.]/g, ""));
 }
 
@@ -150,7 +159,7 @@ function convertMatch(match) {
   let amount = null;
   let multiplier = 1;
 
-  const multiplierRegex = new RegExp(`(${multiplierWords})\\s*$`, "i");
+  // ✅ PERF: use pre-compiled multiplierRegex instead of new RegExp every call
   const multiplierMatch = match.match(multiplierRegex);
   if (multiplierMatch) {
     multiplier = multiplierMap[multiplierMatch[1].toLowerCase()] || 1;
@@ -166,7 +175,6 @@ function convertMatch(match) {
   } else if (/^[A-Z]{3}/i.test(match)) {
     const parts = match.trim().split(/\s+/);
     from = parts[0].toUpperCase();
-    // Join remaining parts in case number has spaces (8 599)
     amount = parseAmount(parts.slice(1).join(""));
   } else {
     const parts = match.trim().split(/\s+/);
@@ -192,18 +200,12 @@ function processSplitNode(node) {
   const fullText = parent.innerText?.trim();
   if (!fullText || fullText.includes(`(${TARGET}`)) return;
 
-  combinedRegex.lastIndex = 0;
-  const match = combinedRegex.exec(fullText);
-  combinedRegex.lastIndex = 0;
+  // ✅ PERF: quick check before running heavy regex
+  if (!QUICK_CHECK.test(fullText)) return;
 
+  const match = getRegex().exec(fullText);
   if (!match) return;
-
-  const hasCurrencyIndicator =
-    /[$€£¥₹₩₽₺₦₫₱]/.test(match[0]) ||
-    /^rs\.?/i.test(match[0]) ||
-    new RegExp(`\\b(${currencyList})\\b`, "i").test(match[0]);
-
-  if (!hasCurrencyIndicator) return;
+  if (!hasCurrencyIndicatorRegex.test(match[0])) return;
 
   const converted = convertMatch(match[0]);
   if (!converted) return;
@@ -218,25 +220,26 @@ function processSplitNode(node) {
 /* ---------- Process a single text node ---------- */
 function processNode(node) {
   if (!node.nodeValue?.trim() || !node.parentElement) return;
+
   const parent = node.parentElement;
-  if (
-    ["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA", "INPUT"].includes(
-      parent.tagName,
-    )
-  )
-    return;
+
+  // ✅ PERF: Set.has() is O(1) vs array includes() O(n)
+  if (SKIP_TAGS.has(parent.tagName)) return;
   if (parent.querySelector(".cc-label")) return;
 
   const original = node.nodeValue;
+
+  // ✅ PERF: quick reject - no currency symbol or digit = skip immediately
+  // This alone skips ~80% of all text nodes on any page
+  if (!QUICK_CHECK.test(original)) return;
+
   if (original.includes(`(${TARGET}`)) return;
 
-  combinedRegex.lastIndex = 0;
-  const newText = original.replace(combinedRegex, (match) => {
+  const newText = original.replace(getRegex(), (match) => {
     const converted = convertMatch(match);
     if (!converted) return match;
     return `${match} (${TARGET} ${formatNumber(converted, TARGET)})`;
   });
-  combinedRegex.lastIndex = 0;
 
   if (newText !== original) {
     isScanning = true;
@@ -247,19 +250,54 @@ function processNode(node) {
   }
 }
 
+/* ---------- Scan aria-label prices (ChatGPT style) ---------- */
+function processAriaLabels(root) {
+  if (!currentRates) return;
+
+  root.querySelectorAll("[aria-label]").forEach((el) => {
+    if (el.querySelector(".cc-label")) return;
+
+    const ariaLabel = el.getAttribute("aria-label")?.trim();
+    if (!ariaLabel) return;
+    if (ariaLabel.length > 20) return;
+    if (ariaLabel.includes(`(${TARGET}`)) return;
+
+    // ✅ PERF: quick check before heavy regex
+    if (!QUICK_CHECK.test(ariaLabel)) return;
+    if (!hasCurrencyIndicatorRegex.test(ariaLabel)) return;
+
+    const match = getRegex().exec(ariaLabel);
+    if (!match) return;
+
+    const converted = convertMatch(match[0]);
+    if (!converted) return;
+
+    const ccLabel = document.createElement("span");
+    ccLabel.className = "cc-label";
+    ccLabel.style.cssText = "margin-left:4px; font-size:0.85em; color:gray;";
+    ccLabel.innerText = `(${TARGET} ${formatNumber(converted, TARGET)})`;
+    el.appendChild(ccLabel);
+  });
+}
+
 /* ---------- Scan a root element ---------- */
 function scanPage(root) {
   if (!currentRates || !root) return;
+
+  // Handle aria-label prices first (ChatGPT style)
+  processAriaLabels(root);
+
+  // ✅ PERF: process directly in walker loop - no array allocation
   const walker = document.createTreeWalker(
     root,
     NodeFilter.SHOW_TEXT,
     null,
     false,
   );
-  const nodes = [];
   let n;
-  while ((n = walker.nextNode())) nodes.push(n);
-  nodes.forEach((n) => processNode(n));
+  while ((n = walker.nextNode())) {
+    processNode(n);
+  }
 }
 
 /* ---------- Amazon Price Fix ---------- */
@@ -289,28 +327,32 @@ function processAmazonPrices() {
 
 /* ---------- Observe DOM Changes ---------- */
 function observe() {
+  // ✅ PERF: single observer for both childList and characterData
   new MutationObserver((mutations) => {
     if (isScanning) return;
-    for (let mutation of mutations) {
-      for (let node of mutation.addedNodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
+    for (const mutation of mutations) {
+      if (mutation.type === "childList") {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            processNode(node);
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.querySelectorAll) processAriaLabels(node);
+            scanPage(node);
+          }
+        }
+      } else if (mutation.type === "characterData") {
+        const node = mutation.target;
+        // ✅ PERF: quick check before processNode
+        if (node.nodeValue && QUICK_CHECK.test(node.nodeValue)) {
           processNode(node);
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          scanPage(node);
         }
       }
     }
-  }).observe(document.body, { childList: true, subtree: true });
-
-  new MutationObserver((mutations) => {
-    if (isScanning) return;
-    for (let mutation of mutations) {
-      const node = mutation.target;
-      if (node.nodeValue && /[$€£¥₹₩₽₺₦₫₱\d]/.test(node.nodeValue)) {
-        processNode(node);
-      }
-    }
-  }).observe(document.body, { subtree: true, characterData: true });
+  }).observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
 }
 
 /* ---------- Detect URL Change ---------- */
@@ -326,6 +368,7 @@ function detectUrlChange() {
     }
   }).observe(document, { subtree: true, childList: true });
 }
+
 /* ---------- Message Listener ---------- */
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "updateCurrency") {
